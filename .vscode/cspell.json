@@ -1,28 +1,30 @@
 {
     "version": "0.2",
-    "language": "en",
+    "language": "en, ru",
     "words": [
+        "багрепортов",
+        "логированием",
+        "KStatusNotifierItem",
         "QApplication",
-        "QMenu",
-        "QTimer",
-        "QString",
-        "QLabel",
-        "QIcon",
         "QDebug",
+        "QIcon",
+        "QLabel",
+        "QMenu",
         "QMessageBox",
-        "QPixmap",
         "QPainter",
         "QPainterPath",
-        "KStatusNotifierItem"
+        "QPixmap",
+        "QString",
+        "QTimer"
     ],
     "ignoreRegExpList": [
-        "#include <.*>",  // Игнорировать строки с include
-        "//.*"           // Игнорировать комментарии
+        "#include <.*>", // Игнорировать строки с include
+        "//.*" // Игнорировать комментарии
     ],
     "ignorePaths": [
-        "**/build/**",   // Игнорировать директорию сборки
-        "**/*.h",        // Если нужно игнорировать заголовки
-        "**/*.cpp"       // Если нужно игнорировать исходники
+        "**/build/**", // Игнорировать директорию сборки
+        "**/*.h", // Если нужно игнорировать заголовки
+        "**/*.cpp" // Если нужно игнорировать исходники
     ],
     "dictionaryDefinitions": [
         {

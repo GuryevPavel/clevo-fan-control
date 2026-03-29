@@ -14,7 +14,7 @@ else
     USER_HOME=$HOME
 fi
 
-REPO_DIR="$USER_HOME/install/linux/drivers/clevo/tuxedo-drivers"
+REPO_DIR="$(pwd)/tuxedo-drivers"
 REPO_URL="https://github.com/tuxedocomputers/tuxedo-drivers.git"
 
 echo "=== Tuxedo Drivers Installer/Updater ==="
