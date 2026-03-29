@@ -133,11 +133,9 @@ clevo-fan-control test # запустить тест вентиляторов
       и NVMe накопителей
 
 ## Разработчики
-============================================================================
  Name        : clevo-fan-control
  Author      : Guryev Pavel (pilatnet@gmail.com)
  Description : Clevo fan control daemon
-============================================================================
 
  Based on original work by Agramian:
    https://github.com/agramian/clevo-fan-control
@@ -148,5 +146,4 @@ clevo-fan-control test # запустить тест вентиляторов
  This utility was developed with assistance from DeepSeek AI.
  
  License: GPL v3
-============================================================================
 
