@@ -110,7 +110,6 @@ check_os() {
         print_warning "Не удалось определить ОС"
     fi
     
-    # Определяем пакетный менеджер
     if command -v apt >/dev/null 2>&1; then
         PKG_MANAGER="apt"
         PKG_UPDATE="apt update -qq"
@@ -232,17 +231,16 @@ check_existing_binary() {
             BINARY_PATH="$found_binary"
             REBUILD=1
             print_success "Будет использован существующий бинарный файл"
-            return 0
         else
             print_info "Будет выполнена пересборка"
             REBUILD=0
-            return 1
         fi
     else
         print_info "Скомпилированный бинарный файл не найден, будет выполнена сборка"
         REBUILD=0
-        return 1
     fi
+    
+    return 0
 }
 
 #==============================================================================
@@ -269,7 +267,6 @@ install_dependencies() {
     print_info "Установка пакетов: ${PKG_DEPS[*]}"
     eval "$PKG_INSTALL ${PKG_DEPS[*]}"
     
-    # Особые случаи для некоторых дистрибутивов
     if [ "$PKG_MANAGER" = "pacman" ]; then
         local kernel_version=$(uname -r | cut -d'-' -f1)
         pacman -S --noconfirm linux${kernel_version:0:1}-headers 2>/dev/null || true
@@ -550,7 +547,7 @@ print_summary() {
     echo "  • Конфигурация:     /etc/clevo-fan-control/"
     echo "  • Логи:             /var/log/clevo-fan-control/"
     echo "  • Сервис:           $SERVICE_NAME"
-    echo "  • Скрипт удаления:  /usr/local/bin/clevo-fan-control-uninstall"
+    echo "  • Для удаления:     ./uninstall.sh (из директории проекта)"
     echo ""
     echo "Управление:"
     echo "  • Запуск:           sudo systemctl start clevo-fan-control"

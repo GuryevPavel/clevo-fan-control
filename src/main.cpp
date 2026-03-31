@@ -2,7 +2,7 @@
 ============================================================================
  Name        : clevo-fan-control.cpp
  Author      : Guryev Pavel (pilatnet@gmail.com)
- Version     : 1.0.0
+ Version     : 1.0.2
  Description : Clevo fan control daemon
 ============================================================================
 
@@ -18,7 +18,7 @@
 ============================================================================
 */
 
-#define VERSION "1.0.0"
+#define VERSION "1.0.2"
 #define AUTHOR "Guryev Pavel (pilatnet@gmail.com)"
 #define ORIGINAL_AUTHOR "Agramian (https://github.com/agramian/clevo-fan-control)"
 #define DEEPSEEK_CREDIT "Developed with assistance from DeepSeek AI"
@@ -63,7 +63,6 @@
 
 // EC Registers
 #define EC_REG_CPU_TEMP     0x07
-#define EC_REG_AMBIENT_TEMP 0xCA
 #define EC_REG_GPU_TEMP     0xFB
 #define EC_REG_FAN_CPU_DUTY 0xCE
 #define EC_REG_FAN_CPU_RPMS_HI 0xD0
@@ -85,6 +84,10 @@
 
 // Параметры диагностического теста
 #define TEST_STEP_DURATION 3
+
+// Пороги NVMe
+#define NVME_WARNING_TEMP 60
+#define NVME_CRITICAL_TEMP 64
 
 //============================================================================
 // Структуры данных
@@ -191,8 +194,7 @@ static int ambient_last_valid = 35;
 //============================================================================
 
 static void print_help(void);
-static void print_warning(const char *msg);
-static void init_paths(void);
+static void get_xdg_paths(void);
 static void ensure_directories(void);
 static void init_default_config(void);
 static int load_config(void);
@@ -256,6 +258,9 @@ static void print_help(void) {
     printf("  Intelligent fan control daemon for Clevo laptops (N960KPx).\n");
     printf("  Monitors CPU/GPU/NVMe temperatures and adjusts fan speeds\n");
     printf("  according to configurable fan curves.\n\n");
+    printf("  NVMe protection:\n");
+    printf("    - 60°C: Fans → 90%%\n");
+    printf("    - 64°C: Fans → 100%% (overrides CPU/GPU control)\n\n");
     printf("AUTHOR:\n");
     printf("  %s\n", AUTHOR);
     printf("  Based on original work by %s\n", ORIGINAL_AUTHOR);
@@ -288,55 +293,62 @@ static void print_help(void) {
     printf("  sudo %s log       # Start daemon with logging\n\n");
 }
 
-static void print_warning(const char *msg) {
-    printf("⚠️ %s\n", msg);
-}
-
 //============================================================================
-// Инициализация путей (системные или пользовательские)
+// XDG-совместимые пути
 //============================================================================
 
-static void init_paths(void) {
+static void get_xdg_paths(void) {
     uid_t uid = getuid();
     const char *sudo_user = getenv("SUDO_USER");
+    struct passwd *pw = NULL;
     
-    // Определяем режим работы
-    int is_service_mode = 0;
-    
-    // Если запущены от root и нет SUDO_USER - это служба
-    if (uid == 0 && (!sudo_user || strlen(sudo_user) == 0)) {
-        is_service_mode = 1;
-        printf("✓ Running in service mode (system-wide)\n");
-    } else if (uid == 0 && sudo_user && strlen(sudo_user) > 0) {
-        printf("✓ Running with sudo by user: %s\n", sudo_user);
-    } else {
-        printf("✓ Running as user: %s\n", getenv("USER") ? getenv("USER") : "unknown");
+    if (sudo_user && strlen(sudo_user) > 0) {
+        pw = getpwnam(sudo_user);
     }
     
-    if (is_service_mode) {
-        // Системные пути для службы
-        snprintf(config_path, sizeof(config_path), "/etc/clevo-fan-control");
-        snprintf(log_dir, sizeof(log_dir), "/var/log/clevo-fan-control");
-        snprintf(test_log_dir, sizeof(test_log_dir), "%s", log_dir);
-        snprintf(state_dir, sizeof(state_dir), "/var/lib/clevo-fan-control");
-        
-        printf("✓ Using system paths (service mode)\n");
+    if (!pw) {
+        pw = getpwuid(uid);
+    }
+    
+    const char *home = pw ? pw->pw_dir : getenv("HOME");
+    if (!home) home = "/root";
+    
+    const char *username = pw ? pw->pw_name : "root";
+    
+    const char *xdg_config = getenv("XDG_CONFIG_HOME");
+    if (xdg_config && strstr(xdg_config, home)) {
+        snprintf(config_path, sizeof(config_path), "%s/clevo-fan-control", xdg_config);
     } else {
-        // Пользовательские пути (при ручном запуске)
-        const char *home = getenv("HOME");
-        if (!home || strcmp(home, "/") == 0 || strcmp(home, "/root") == 0) {
-            home = "/tmp";
-            print_warning("Could not determine home directory, using /tmp");
-        }
-        
         snprintf(config_path, sizeof(config_path), "%s/.config/clevo-fan-control", home);
-        snprintf(log_dir, sizeof(log_dir), "%s/.local/share/clevo-fan-control/logs", home);
-        snprintf(test_log_dir, sizeof(test_log_dir), "%s", log_dir);
-        snprintf(state_dir, sizeof(state_dir), "%s/.local/state/clevo-fan-control", home);
-        
-        printf("✓ Using user paths\n");
     }
     
+    const char *xdg_data = getenv("XDG_DATA_HOME");
+    if (xdg_data && strstr(xdg_data, home)) {
+        snprintf(log_dir, sizeof(log_dir), "%s/clevo-fan-control/logs", xdg_data);
+    } else {
+        snprintf(log_dir, sizeof(log_dir), "%s/.local/share/clevo-fan-control/logs", home);
+    }
+    snprintf(test_log_dir, sizeof(test_log_dir), "%s", log_dir);
+    
+    const char *xdg_state = getenv("XDG_STATE_HOME");
+    if (xdg_state && strstr(xdg_state, home)) {
+        snprintf(state_dir, sizeof(state_dir), "%s/clevo-fan-control", xdg_state);
+    } else {
+        snprintf(state_dir, sizeof(state_dir), "%s/.local/state/clevo-fan-control", home);
+    }
+    
+    uid_t euid = geteuid();
+    if (euid == 0 && pw) {
+        seteuid(pw->pw_uid);
+    }
+    
+    ensure_directories();
+    
+    if (euid == 0) {
+        seteuid(0);
+    }
+    
+    printf("✓ Using user: %s\n", username);
     printf("✓ Config path: %s\n", config_path);
     printf("✓ Log path: %s\n", log_dir);
 }
@@ -344,7 +356,6 @@ static void init_paths(void) {
 static void ensure_directories(void) {
     char tmp[512];
     
-    // Создаём директории рекурсивно
     strcpy(tmp, config_path);
     char *p = tmp;
     while (*p) {
@@ -387,15 +398,14 @@ static void ensure_directories(void) {
 //============================================================================
 
 static void init_default_config(void) {
-   
     struct FanCurvePoint cpu_default[] = {
-        {30, 0}, {35, 5}, {40, 7}, {42, 10}, {45, 20}, {47, 35},
-        {50, 45}, {55, 55}, {60, 65}, {62, 75}, {65, 85}, {100, 100}
-    };
-
-    struct FanCurvePoint gpu_default[] = {
-        {30, 0}, {35, 10}, {40, 15}, {42, 20}, {45, 30}, {47, 40},
+        {35, 0}, {40, 10}, {42, 20}, {45, 30}, {47, 40},
         {50, 50}, {55, 60}, {60, 70}, {62, 80}, {65, 90}, {100, 100}
+    };
+    
+    struct FanCurvePoint gpu_default[] = {
+        {35, 0}, {40, 5}, {42, 10}, {45, 20}, {47, 30},
+        {50, 40}, {55, 50}, {60, 60}, {62, 70}, {65, 80}, {100, 90}
     };
     
     config.cpu_curve.num_points = sizeof(cpu_default) / sizeof(cpu_default[0]);
@@ -577,7 +587,6 @@ static void scan_ambient_sensors(void) {
     printf("\n🔍 Scanning ambient temperature sensors...\n");
     ambient_sensor_count = 0;
     
-    // Сканируем thermal zones
     for (int zone = 0; zone < 30 && ambient_sensor_count < AMBIENT_SENSORS_MAX; zone++) {
         char path[256];
         snprintf(path, sizeof(path), "/sys/class/thermal/thermal_zone%d/temp", zone);
@@ -614,7 +623,6 @@ static void scan_ambient_sensors(void) {
         ambient_sensor_count++;
     }
     
-    // Сканируем hwmon (acpitz, iwlwifi)
     for (int hwmon = 0; hwmon < 20 && ambient_sensor_count < AMBIENT_SENSORS_MAX; hwmon++) {
         char name_path[256];
         snprintf(name_path, sizeof(name_path), "/sys/class/hwmon/hwmon%d/name", hwmon);
@@ -657,7 +665,6 @@ static void scan_ambient_sensors(void) {
     
     printf("  Found %d sensors for ambient temperature\n", ambient_sensor_count);
     
-    // Калибровка - определяем доверенные сенсоры
     printf("  Calibrating sensors (5 seconds)...");
     fflush(stdout);
     
@@ -681,7 +688,6 @@ static void scan_ambient_sensors(void) {
     }
     printf(" done.\n");
     
-    // Анализ калибровочных данных
     int trusted_count = 0;
     for (int i = 0; i < ambient_sensor_count; i++) {
         if (ambient_sensors[i].cal_idx < 3) continue;
@@ -735,7 +741,6 @@ static int calculate_ambient_temp(void) {
 }
 
 static void update_ambient_temp(void) {
-    // Обновляем все датчики
     for (int i = 0; i < ambient_sensor_count; i++) {
         if (!ambient_sensors[i].trusted) continue;
         
@@ -749,7 +754,6 @@ static void update_ambient_temp(void) {
         }
     }
     
-    // Вычисляем ambient
     share_info->ambient_temp = calculate_ambient_temp();
 }
 
@@ -920,53 +924,157 @@ static void nvidia_update(void) {
 // NVMe функции
 //============================================================================
 
+//============================================================================
+// NVMe функции (оптимизированные - без popen в цикле)
+//============================================================================
+
+static char nvme0_path[256] = {0};
+static char nvme1_path[256] = {0};
+
 static void scan_nvme_disks(void) {
     printf("\n💾 Scanning NVMe drives...\n");
     
-    glob_t glob_result;
-    memset(&glob_result, 0, sizeof(glob_result));
+    share_info->nvme1_temp = 0;
+    share_info->nvme2_temp = 0;
+    memset(nvme0_path, 0, sizeof(nvme0_path));
+    memset(nvme1_path, 0, sizeof(nvme1_path));
     
-    const char* patterns[] = {
-        "/sys/class/nvme/nvme*/device/temp*_input",
-        "/sys/class/nvme/nvme*/hwmon/hwmon*/temp*_input",
-        NULL
-    };
-    
-    for (int p = 0; patterns[p]; p++) {
-        glob(patterns[p], GLOB_APPEND, NULL, &glob_result);
-    }
-    
-    int found = 0;
-    for (size_t i = 0; i < glob_result.gl_pathc && found < 4; i++) {
-        char *path = glob_result.gl_pathv[i];
-        if (strstr(path, "temp2") || strstr(path, "temp3")) continue;
+    for (int nvme_idx = 0; nvme_idx < 2; nvme_idx++) {
+        char base_path[256];
+        snprintf(base_path, sizeof(base_path), "/sys/class/nvme/nvme%d", nvme_idx);
         
-        FILE *f = fopen(path, "r");
-        if (!f) continue;
+        struct stat st;
+        if (stat(base_path, &st) != 0) {
+            continue;
+        }
         
-        int val;
-        if (fscanf(f, "%d", &val) == 1) {
-            int temp = val / 1000;
-            if (temp >= 20 && temp <= 100) {
-                printf("  Found NVMe drive: %d°C\n", temp);
-                if (found == 0) share_info->nvme1_temp = temp;
-                if (found == 1) share_info->nvme2_temp = temp;
-                found++;
+        int found_temp = 0;
+        char *saved_path = (nvme_idx == 0) ? nvme0_path : nvme1_path;
+        
+        // Пробуем стандартные пути
+        const char* test_paths[] = {
+            "/sys/class/nvme/nvme%d/device/temp1_input",
+            "/sys/class/nvme/nvme%d/temperature",
+            NULL
+        };
+        
+        for (int p = 0; test_paths[p] != NULL; p++) {
+            char temp_path[256];
+            snprintf(temp_path, sizeof(temp_path), test_paths[p], nvme_idx);
+            
+            FILE *f = fopen(temp_path, "r");
+            if (f) {
+                int val;
+                if (fscanf(f, "%d", &val) == 1) {
+                    int temp = (val > 1000) ? val / 1000 : val;
+                    if (temp >= 20 && temp <= 100) {
+                        found_temp = 1;
+                        strcpy(saved_path, temp_path);
+                        
+                        if (nvme_idx == 0) {
+                            share_info->nvme1_temp = temp;
+                        } else {
+                            share_info->nvme2_temp = temp;
+                        }
+                        
+                        char model_path[256];
+                        char model[128] = "Unknown NVMe";
+                        snprintf(model_path, sizeof(model_path), "/sys/class/nvme/nvme%d/device/model", nvme_idx);
+                        
+                        FILE *mf = fopen(model_path, "r");
+                        if (mf) {
+                            if (fgets(model, sizeof(model), mf)) {
+                                model[strcspn(model, "\n")] = 0;
+                                char *p = model;
+                                while (*p == ' ') p++;
+                                if (p != model) memmove(model, p, strlen(p) + 1);
+                                p = model + strlen(model) - 1;
+                                while (p > model && *p == ' ') *p-- = 0;
+                            }
+                            fclose(mf);
+                        }
+                        printf("  Found NVMe%d: %s - %d°C\n", nvme_idx, model, temp);
+                        break;
+                    }
+                }
+                fclose(f);
+                if (found_temp) break;
             }
         }
-        fclose(f);
+        
+        // Если не нашли через простые пути, ищем один раз через find
+        if (!found_temp) {
+            char cmd[512];
+            snprintf(cmd, sizeof(cmd), "find /sys -name \"temp*_input\" -path \"*nvme%d*\" 2>/dev/null | head -1", nvme_idx);
+            FILE *fp = popen(cmd, "r");
+            if (fp) {
+                char temp_path[512];
+                if (fgets(temp_path, sizeof(temp_path), fp)) {
+                    temp_path[strcspn(temp_path, "\n")] = 0;
+                    if (strlen(temp_path) > 0) {
+                        FILE *f = fopen(temp_path, "r");
+                        if (f) {
+                            int val;
+                            if (fscanf(f, "%d", &val) == 1) {
+                                int temp = (val > 1000) ? val / 1000 : val;
+                                if (temp >= 20 && temp <= 100) {
+                                    strcpy(saved_path, temp_path);
+                                    if (nvme_idx == 0) {
+                                        share_info->nvme1_temp = temp;
+                                    } else {
+                                        share_info->nvme2_temp = temp;
+                                    }
+                                    printf("  Found NVMe%d: %d°C\n", nvme_idx, temp);
+                                }
+                            }
+                            fclose(f);
+                        }
+                    }
+                }
+                pclose(fp);
+            }
+        }
     }
     
-    globfree(&glob_result);
-    
-    if (found == 0) {
+    if (share_info->nvme1_temp == 0 && share_info->nvme2_temp == 0) {
         printf("  No NVMe drives found\n");
     } else {
-        printf("  Found %d NVMe device(s)\n", found);
+        printf("  Found %d NVMe device(s)\n", 
+               (share_info->nvme1_temp > 0 ? 1 : 0) + (share_info->nvme2_temp > 0 ? 1 : 0));
     }
 }
 
-static void update_nvme_temps(void) {}
+static void update_nvme_temps(void) {
+    // Обновляем NVMe0 - прямое чтение без popen
+    if (share_info->nvme1_temp > 0 && nvme0_path[0] != '\0') {
+        FILE *f = fopen(nvme0_path, "r");
+        if (f) {
+            int val;
+            if (fscanf(f, "%d", &val) == 1) {
+                int temp = (val > 1000) ? val / 1000 : val;
+                if (temp >= 20 && temp <= 100) {
+                    share_info->nvme1_temp = temp;
+                }
+            }
+            fclose(f);
+        }
+    }
+    
+    // Обновляем NVMe1 - прямое чтение без popen
+    if (share_info->nvme2_temp > 0 && nvme1_path[0] != '\0') {
+        FILE *f = fopen(nvme1_path, "r");
+        if (f) {
+            int val;
+            if (fscanf(f, "%d", &val) == 1) {
+                int temp = (val > 1000) ? val / 1000 : val;
+                if (temp >= 20 && temp <= 100) {
+                    share_info->nvme2_temp = temp;
+                }
+            }
+            fclose(f);
+        }
+    }
+}
 
 //============================================================================
 // Логирование
@@ -989,7 +1097,7 @@ static void init_log_files(void) {
         fprintf(log_file, "Config: %s/fan_curve.conf\n", config_path);
         fprintf(log_file, "GPU temperature source: %s\n\n", 
                 share_info->nvidia_available ? "NVML (NVIDIA driver)" : "EC register 0xFB");
-        fprintf(log_file, "Format: Timestamp | CPU | GPU(primary) | GPU(EC) | AMBIENT | CPU_FAN(RPM/%%) | GPU_FAN(RPM/%%)\n\n");
+        fprintf(log_file, "Format: Timestamp | CPU | GPU(primary) | GPU(EC) | AMBIENT | NVMe1/NVMe2 | CPU_FAN(RPM/%%) | GPU_FAN(RPM/%%)\n\n");
         fflush(log_file);
         printf("📝 Log file: %s\n", filename);
     }
@@ -1021,11 +1129,13 @@ static void log_sensor_data(void) {
     
     fprintf(log_file, "[%02d:%02d:%02d] ", 
             tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
-    fprintf(log_file, "CPU:%d | GPU:%d | GPU_EC:%d | AMB:%d | ",
+    fprintf(log_file, "CPU:%d | GPU:%d | GPU_EC:%d | AMB:%d | NVMe:%d/%d | ",
             share_info->cpu_temp_filtered,
             gpu_primary,
             share_info->gpu_temp_raw,
-            share_info->ambient_temp);
+            share_info->ambient_temp,
+            share_info->nvme1_temp,
+            share_info->nvme2_temp);
     fprintf(log_file, "FAN_CPU:%d/%d%% | FAN_GPU:%d/%d%% | %s\n",
             share_info->cpu_fan.rpms,
             share_info->cpu_fan.duty,
@@ -1077,7 +1187,34 @@ static void smart_control_update(void) {
     }
     
     int cpu_temp = share_info->cpu_temp_filtered;
+    int nvme1_temp = share_info->nvme1_temp;
+    int nvme2_temp = share_info->nvme2_temp;
+    int max_nvme_temp = (nvme1_temp > nvme2_temp) ? nvme1_temp : nvme2_temp;
     
+    // Аварийный режим NVMe - приоритет выше CPU/GPU
+    if (max_nvme_temp >= NVME_CRITICAL_TEMP) {
+        share_info->cpu_target = 100;
+        share_info->gpu_target = 100;
+        share_info->emergency = 1;
+        last_cpu_speed = 100;
+        last_gpu_speed = 100;
+        snprintf(share_info->reason, sizeof(share_info->reason),
+                "⚠️ NVMe CRITICAL: %d°C → FULL SPEED (100%%)", max_nvme_temp);
+        return;
+    }
+    
+    if (max_nvme_temp >= NVME_WARNING_TEMP) {
+        share_info->cpu_target = 90;
+        share_info->gpu_target = 90;
+        share_info->emergency = 1;
+        last_cpu_speed = 90;
+        last_gpu_speed = 90;
+        snprintf(share_info->reason, sizeof(share_info->reason),
+                "⚠️ NVMe WARNING: %d°C → HIGH SPEED (90%%)", max_nvme_temp);
+        return;
+    }
+    
+    // Аварийная проверка CPU/GPU
     if (cpu_temp >= config.emergency_temp || gpu_temp >= config.emergency_temp) {
         share_info->cpu_target = 100;
         share_info->gpu_target = 100;
@@ -1085,15 +1222,27 @@ static void smart_control_update(void) {
         last_cpu_speed = 100;
         last_gpu_speed = 100;
         snprintf(share_info->reason, sizeof(share_info->reason),
-                "EMERGENCY: CPU=%d°C GPU=%d°C", cpu_temp, gpu_temp);
+                "⚠️ EMERGENCY: CPU=%d°C GPU=%d°C → FULL SPEED", cpu_temp, gpu_temp);
         return;
     }
     
+    // Нормальный режим
     share_info->emergency = 0;
     
     int cpu_speed = get_fan_speed_from_curve(&config.cpu_curve, cpu_temp);
     int gpu_speed = get_fan_speed_from_curve(&config.gpu_curve, gpu_temp);
     
+    // Дополнительный буст от NVMe при нормальной работе
+    if (max_nvme_temp > 55 && max_nvme_temp < NVME_WARNING_TEMP) {
+        int nvme_boost = (max_nvme_temp - 55) * 2;
+        if (nvme_boost > 20) nvme_boost = 20;
+        cpu_speed += nvme_boost;
+        gpu_speed += nvme_boost;
+        if (cpu_speed > 100) cpu_speed = 100;
+        if (gpu_speed > 100) gpu_speed = 100;
+    }
+    
+    // Плавное изменение скорости
     if (abs(cpu_speed - last_cpu_speed) > 10) {
         cpu_speed = last_cpu_speed + (cpu_speed > last_cpu_speed ? 10 : -10);
     }
@@ -1107,9 +1256,17 @@ static void smart_control_update(void) {
     share_info->cpu_target = cpu_speed;
     share_info->gpu_target = gpu_speed;
     
-    snprintf(share_info->reason, sizeof(share_info->reason),
-            "CPU:%d°C→%d%% GPU:%d°C→%d%%",
-            cpu_temp, cpu_speed, gpu_temp, gpu_speed);
+    // Формируем информативное сообщение
+    if (max_nvme_temp > 55) {
+        snprintf(share_info->reason, sizeof(share_info->reason),
+                "CPU:%d°C→%d%% GPU:%d°C→%d%% NVMe:%d°C (+%d%% boost)",
+                cpu_temp, cpu_speed, gpu_temp, gpu_speed, max_nvme_temp, 
+                (cpu_speed - get_fan_speed_from_curve(&config.cpu_curve, cpu_temp)));
+    } else {
+        snprintf(share_info->reason, sizeof(share_info->reason),
+                "CPU:%d°C→%d%% GPU:%d°C→%d%%",
+                cpu_temp, cpu_speed, gpu_temp, gpu_speed);
+    }
 }
 
 //============================================================================
@@ -1266,7 +1423,19 @@ static void print_status(void) {
            share_info->gpu_fan.rpms,
            share_info->gpu_fan.duty);
     
-    printf("  NVMe: %d°C / %d°C\n", share_info->nvme1_temp, share_info->nvme2_temp);
+    int max_nvme = (share_info->nvme1_temp > share_info->nvme2_temp) ? 
+                   share_info->nvme1_temp : share_info->nvme2_temp;
+    const char* nvme_warning = "";
+    if (max_nvme >= NVME_CRITICAL_TEMP) {
+        nvme_warning = " ⚠️ CRITICAL!";
+    } else if (max_nvme >= NVME_WARNING_TEMP) {
+        nvme_warning = " ⚠️ WARNING!";
+    }
+    
+    printf("  NVMe: %d°C / %d°C%s\n", 
+           share_info->nvme1_temp, 
+           share_info->nvme2_temp,
+           nvme_warning);
     printf("  Ambient: %d°C\n", share_info->ambient_temp);
     printf("  Mode: %s\n", share_info->smart_mode ? "SMART" : "PASSIVE");
     printf("  Target: CPU=%d%% GPU=%d%%\n", share_info->cpu_target, share_info->gpu_target);
@@ -1297,6 +1466,7 @@ static void* worker_thread_func(void*) {
             share_info->gpu_temp_filtered = filter_temperature(gpu_raw, &gpu_filter, &gpu_history, &last_valid_gpu);
             
             update_ambient_temp();
+            update_nvme_temps();
             
             if (share_info->nvidia_available) {
                 nvidia_update();
@@ -1372,8 +1542,7 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    // Инициализация путей (определяет режим: служба или пользователь)
-    init_paths();
+    get_xdg_paths();
     ensure_directories();
     init_default_config();
     load_config();
@@ -1381,16 +1550,6 @@ int main(int argc, char *argv[]) {
     if (help_mode) {
         print_help();
         return 0;
-    }
-    
-    // Если запущены как служба от root, проверяем что конфиг существует
-    if (getuid() == 0 && !getenv("SUDO_USER")) {
-        char test_path[512];
-        snprintf(test_path, sizeof(test_path), "%s/fan_curve.conf", config_path);
-        if (access(test_path, F_OK) != 0) {
-            print_warning("Configuration file not found, creating default");
-            save_config();
-        }
     }
     
     void *shm = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_ANON | MAP_SHARED, -1, 0);
@@ -1418,6 +1577,7 @@ int main(int argc, char *argv[]) {
         share_info->cpu_temp_raw = ec_read_cpu_temp();
         share_info->gpu_temp_raw = ec_read_gpu_temp();
         update_ambient_temp();
+        update_nvme_temps();
         ec_read_fan_status();
         
         printf("\n╔════════════════════════════════════════════════════════════╗\n");
@@ -1440,6 +1600,7 @@ int main(int argc, char *argv[]) {
                share_info->gpu_fan.rpms,
                share_info->gpu_fan.duty);
         
+        printf("  NVMe: %d°C / %d°C\n", share_info->nvme1_temp, share_info->nvme2_temp);
         printf("  Ambient: %d°C\n", share_info->ambient_temp);
         printf("  Mode: %s\n", share_info->smart_mode ? "SMART" : "PASSIVE");
         
@@ -1478,6 +1639,7 @@ int main(int argc, char *argv[]) {
     printf("✓ Config loaded from: %s/fan_curve.conf\n", config_path);
     printf("✓ Log directory: %s/\n", log_dir);
     printf("✓ Filtering: Median window=%d, History=%d samples\n", config.median_window, config.history_size);
+    printf("✓ NVMe protection: %d°C warning, %d°C critical\n", NVME_WARNING_TEMP, NVME_CRITICAL_TEMP);
     
     if (run_test) {
         run_diagnostic_test();

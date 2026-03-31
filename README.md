@@ -1,352 +1,266 @@
 # Clevo Fan Control
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/GuryevPavel/clevo-fan-control)
-[![Debian](https://img.shields.io/badge/Debian-13-red.svg)](https://www.debian.org/)
-[![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)]()
+Интеллектуальная система управления вентиляторами для ноутбуков Clevo (N960KPx / Hasee TX9-CA5DP)
 
-**Интеллектуальное управление вентиляторами для ноутбуков Clevo**
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Version](https://img.shields.io/badge/version-1.0.2-green.svg)](https://github.com/pilat/clevo-fan-control/releases)
 
-> ✅ Протестировано на **Debian 13 (Trixie)** с ядром 6.12.74
+## 🌟 Особенности
 
-## Описание
+- **Интеллектуальное управление** - автоматическая регулировка скорости вентиляторов на основе температур CPU/GPU/NVMe
+- **Раздельные кривые** - индивидуальные настройки для CPU и GPU
+- **Защита NVMe дисков** - принудительное охлаждение при 60°C (90%) и 64°C (100%)
+- **Приоритет NVML** - использование точных данных NVIDIA GPU при наличии драйвера
+- **Фильтрация данных** - медианный фильтр для устранения выбросов
+- **Автозапуск** - интеграция с systemd
+- **XDG-совместимость** - конфиги и логи в стандартных директориях
 
-**Clevo Fan Control** — это демон для интеллектуального управления вентиляторами ноутбуков Clevo (N960KPx и совместимых). Обеспечивает автоматический контроль температуры CPU, GPU, NVMe накопителей и окружающей среды с возможностью настройки температурных кривых.
+## 📋 Требования
 
-## Возможности
+- Linux с поддержкой `ioperm` (доступ к портам 0x62/0x66)
+- Права root (sudo)
+- Опционально: NVIDIA драйвер для точного мониторинга GPU
 
-- **Интеллектуальное управление** — автоматическая регулировка скорости вентиляторов на основе температурных кривых
-- **Мониторинг температуры** — CPU (EC), GPU (NVML или EC), NVMe, Ambient (из системных датчиков)
-- **Диагностический тест** — полная проверка работы вентиляторов CPU и GPU
-- **Логирование** — непрерывная запись всех данных в реальном времени
-- **Фильтрация данных** — медианный фильтр и анализ истории для отбрасывания выбросов
-- **Гибкая настройка** — раздельные температурные кривые для CPU и GPU
-- **Работа как служба** — systemd сервис с автозапуском
-- **Кроссплатформенность** — работает на любом дистрибутиве Linux
+## 🔧 Установка
 
-## Совместимость
-
-### Поддерживаемые дистрибутивы
-
-| Дистрибутив | Версия | Статус |
-|-------------|--------|--------|
-| **Debian** | 13 (Trixie) | ✅ Полностью протестировано |
-| Debian | 12 (Bookworm) | ✅ Совместимо |
-| Ubuntu | 22.04 LTS и новее | ✅ Совместимо |
-| Linux Mint | 21.x и новее | ✅ Совместимо |
-| MX Linux | 23 и новее | ✅ Совместимо |
-| Fedora | 38 и новее | ✅ Совместимо |
-| Arch Linux | Rolling release | ✅ Совместимо |
-| Manjaro | Последние версии | ✅ Совместимо |
-| openSUSE | Leap 15.5, Tumbleweed | ✅ Совместимо |
-
-> **Примечание:** Программа тестировалась на **Linux Debian 13 (Trixie)** с ядром 6.12.74. На других дистрибутивах должна работать корректно, так как использует только стандартные системные вызовы Linux.
-
-### Аппаратная совместимость
-
-| Модель | Статус | Примечания |
-|--------|--------|------------|
-| Clevo N960KPx | ✅ Полностью поддерживается | Основная тестовая платформа |
-| Hasee TX9-CA5DP | ✅ Полностью поддерживается | Аналог Clevo N960KPx |
-| Другие Clevo с EC 0x99 | ⚠️ Требуется тестирование | Может работать, но не гарантируется |
-
-## Требования
-
-### Системные требования
-
-- **Операционная система:** Linux (x86_64)
-- **Ядро:** 5.10 или новее
-- **Права:** root (sudo) для доступа к EC-портам
-- **Память:** ~2 MB
-- **Дисковое пространство:** ~50 MB
-
-### Протестированные дистрибутивы
-
-| Дистрибутив | Версия | Статус |
-|-------------|--------|--------|
-| **Debian** | **13 (Trixie)** | **✅ Полностью протестировано** |
-| Debian | 12 (Bookworm) | ✅ Совместимо |
-| Ubuntu | 22.04 LTS+ | ✅ Совместимо |
-| Linux Mint | 21.x+ | ✅ Совместимо |
-| MX Linux | 23+ | ✅ Совместимо |
-| Fedora | 38+ | ✅ Совместимо |
-| Arch Linux | Rolling | ✅ Совместимо |
-
-### Опциональные зависимости
-
-- **NVIDIA драйвер** — для точного мониторинга GPU через NVML (рекомендуется)
-- **tuxedo_drivers** — для полной аппаратной совместимости (рекомендуется)
-- **systemd** — для работы в качестве службы с автозапуском (рекомендуется)
-
-## Тестирование
-
-Программа успешно протестирована на следующем оборудовании:
-
-```text
-Модель: Notebook N960Kx (Clevo N960KPx)
-BIOS: INSYDE Corp. 1.07.14 (05/18/2022)
-Chipset: Intel H570
-GPU: NVIDIA GeForce RTX 3070 Laptop GPU
-Ядро: 6.12.74+deb13+1-amd64
-ОС: Debian GNU/Linux 13 (trixie)
-```
-
-Результаты тестирования:
-- ✅ Управление CPU вентилятором
-- ✅ Управление GPU вентилятором
-- ✅ Мониторинг температуры через EC
-- ✅ Мониторинг температуры через NVML (NVIDIA)
-- ✅ Мониторинг NVMe температуры
-- ✅ Автоматический запуск через systemd
-- ✅ Работа в течение длительного времени (7+ дней без сбоев)
-
-## Установка
-
-### Быстрая установка (рекомендуется)
+### Быстрая установка
 
 ```bash
-git clone https://github.com/GuryevPavel/clevo-fan-control.git
-cd clevo-fan-control
 chmod +x install.sh
 sudo ./install.sh
 ```
 
-Скрипт установки:
-- Определит ваш дистрибутив и установит необходимые зависимости
-- Предложит установить драйверы Tuxedo (рекомендуется для полной совместимости)
-- Соберёт программу или предложит использовать готовый бинарный файл
-- Установит systemd сервис и настроит автозапуск
-
-### Ручная сборка и установка
-
-#### Установка зависимостей
-
-**Debian/Ubuntu/Linux Mint/MX Linux:**
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake make g++ git pkg-config \
-    linux-headers-$(uname -r) libpthread-stubs0-dev libc6-dev libsystemd-dev
-```
-
-**Fedora/RHEL/CentOS:**
-```bash
-sudo dnf install -y gcc-c++ cmake make kernel-devel git pkgconfig systemd-devel
-```
-
-**Arch Linux/Manjaro:**
-```bash
-sudo pacman -S --noconfirm base-devel cmake make gcc linux-headers git pkg-config systemd-libs
-```
-
-**openSUSE:**
-```bash
-sudo zypper install -y gcc-c++ cmake make kernel-devel git pkg-config systemd-devel
-```
-
-#### Сборка
+### Ручная установка из исходников
 
 ```bash
+git clone https://github.com/pilat/clevo-fan-control.git
+cd clevo-fan-control
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
-sudo chown root ./clevo-fan-control
-sudo chmod u+s ./clevo-fan-control
 sudo make install
-```
-
-### Установка драйверов Tuxedo (опционально)
-
-Для полной совместимости с аппаратным обеспечением рекомендуется установить драйверы Tuxedo:
-
-```bash
-chmod +x update-tuxedo-drivers.sh
-sudo ./update-tuxedo-drivers.sh
-```
-
-Или используйте скрипт установки `install.sh`, который предложит установить драйверы автоматически.
-
-## Использование
-
-### Запуск демона
-
-```bash
-sudo systemctl start clevo-fan-control    # Запуск сервиса
-sudo systemctl enable clevo-fan-control   # Автозапуск при старте системы
-sudo systemctl status clevo-fan-control   # Проверка статуса
-```
-
-### Пользовательские команды
-
-```bash
-sudo clevo-fan-control           # Запуск в обычном режиме (не как служба)
-sudo clevo-fan-control test      # Запуск с диагностическим тестом
-sudo clevo-fan-control log       # Запуск с непрерывным логированием
-sudo clevo-fan-control status    # Показать текущий статус
-sudo clevo-fan-control stop      # Остановить демон
-sudo clevo-fan-control help      # Показать справку
-```
-
-### Просмотр логов
-
-```bash
-sudo journalctl -u clevo-fan-control -f        # Логи сервиса в реальном времени
-sudo journalctl -u clevo-fan-control --since today  # Логи за сегодня
-cat /var/log/clevo-fan-control/*.log           # Файлы логов программы
-```
-
-## Конфигурация
-
-### Расположение файлов
-
-| Тип | Путь | Описание |
-|-----|------|----------|
-| Конфигурация | `/etc/clevo-fan-control/fan_curve.conf` | Температурные кривые |
-| Логи | `/var/log/clevo-fan-control/*.log` | Файлы логов |
-| Состояние | `/var/lib/clevo-fan-control/` | Временные файлы состояния |
-| Бинарный файл | `/usr/local/bin/clevo-fan-control` | Исполняемый файл |
-| Сервис | `/etc/systemd/system/clevo-fan-control.service` | systemd сервис |
-
-### Формат конфигурационного файла
-
-```ini
-# Clevo Fan Control Configuration
-
-[CPU]
-30 0      # Температура 30°C → 0%
-35 5      # Температура 35°C → 5%
-40 7      # Температура 40°C → 7%
-42 10     # Температура 42°C → 10%
-45 20     # Температура 45°C → 20%
-47 35     # Температура 47°C → 35%
-50 45     # Температура 50°C → 45%
-55 55     # Температура 55°C → 55%
-60 65     # Температура 60°C → 65%
-62 75     # Температура 62°C → 75%
-65 85     # Температура 65°C → 85%
-100 100   # Температура 100°C → 100%
-
-[GPU]
-30 0
-35 10
-40 15
-42 20
-45 30
-47 40
-50 50
-55 60
-60 70
-62 80
-65 90
-100 100
-```
-
-> **Примечание:** Кривая GPU настроена более агрессивно, так как вентилятор GPU косвенно охлаждает также NVMe накопители и чипсет.
-
-## Удаление
-
-```bash
-sudo /usr/local/bin/clevo-fan-control-uninstall
-```
-
-Или вручную:
-
-```bash
-sudo systemctl stop clevo-fan-control
-sudo systemctl disable clevo-fan-control
-sudo rm -f /usr/local/bin/clevo-fan-control
-sudo rm -f /etc/systemd/system/clevo-fan-control.service
-sudo rm -rf /etc/clevo-fan-control
-sudo rm -rf /var/log/clevo-fan-control
-sudo rm -rf /var/lib/clevo-fan-control
 sudo systemctl daemon-reload
+sudo systemctl enable clevo-fan-control
+sudo systemctl start clevo-fan-control
 ```
 
-## Диагностика
-
-### Проверка работы вентиляторов
-
-```bash
-sudo clevo-fan-control test
-```
-
-Эта команда выполнит:
-- Противофазный тест (CPU↑ GPU↓ и CPU↓ GPU↑)
-- Синхронный тест (оба вентилятора вместе)
-- Пошаговый тест CPU и GPU по отдельности
-- Тест на конфликты с быстрыми переключениями
-
-Результаты теста сохраняются в `/var/log/clevo-fan-control/fan_test_*.log`
-
-### Просмотр текущего статуса
+### Проверка статуса
 
 ```bash
 sudo clevo-fan-control status
 ```
 
-Пример вывода:
-```
-╔════════════════════════════════════════════════════════════╗
-║           Clevo Fan Control v1.0.0                      ║
-╚════════════════════════════════════════════════════════════╝
+## 📖 Использование
 
-GPU Temperature Source: NVML (NVIDIA driver)
-Config: /etc/clevo-fan-control/fan_curve.conf
-
-Current Status:
-  CPU: 45°C → Fan: 2232 RPM (40%)
-  GPU: 43°C → Fan: 1659 RPM (29%)
-  NVMe: 42°C / 38°C
-  Ambient: 35°C
-  Mode: SMART
-  Target: CPU=40% GPU=30%
-  CPU:45°C→40% GPU:43°C→30%
-```
-
-## Устранение неполадок
-
-### Ошибка "Cannot access EC ports"
-
-Убедитесь, что программа запущена с правами root:
 ```bash
-sudo clevo-fan-control
+sudo clevo-fan-control           # Нормальный запуск
+sudo clevo-fan-control test      # С диагностическим тестом
+sudo clevo-fan-control log       # С непрерывным логированием
+sudo clevo-fan-control status    # Показать статус
+sudo clevo-fan-control stop      # Остановить демон
+sudo clevo-fan-control help      # Справка
 ```
 
-### Вентиляторы не реагируют на управление
+## ⚙️ Конфигурация
 
-Проверьте, что нет конфликтующих модулей:
+### Файл конфигурации
+
+После первого запуска создается файл:
+```
+~/.config/clevo-fan-control/fan_curve.conf
+```
+
+### Формат кривых
+
+```ini
+[CPU]
+35 0      # ниже 35°C → 0%
+40 10     # 35-40°C → 10%
+42 20     # 40-42°C → 20%
+45 30     # 42-45°C → 30%
+47 40     # 45-47°C → 40%
+50 50     # 47-50°C → 50%
+55 60     # 50-55°C → 60%
+60 70     # 55-60°C → 70%
+62 80     # 60-62°C → 80%
+65 90     # 62-65°C → 90%
+100 100   # выше 65°C → 100%
+
+[GPU]
+35 0      # GPU кривая более щадящая (макс 90%)
+40 5
+42 10
+45 20
+47 30
+50 40
+55 50
+60 60
+62 70
+65 80
+100 90
+```
+
+## 🛡️ Защита NVMe
+
+| Температура | Действие |
+|-------------|----------|
+| 55-60°C     | Буст скорости до +20% |
+| ≥60°C       | Вентиляторы → 90% (приоритет над CPU/GPU) |
+| ≥64°C       | Вентиляторы → 100% (критический режим) |
+
+## 📊 Мониторинг
+
+### Датчики температуры
+
+- **CPU** - EC регистр 0x07
+- **GPU** - NVML (NVIDIA) или EC регистр 0xFB
+- **NVMe** - автоматическое определение через sysfs
+- **Ambient** - усреднение доверенных датчиков системы
+
+### Фильтрация
+
+- Медианный фильтр (5 семплов) - удаление выбросов
+- Анализ стабильности (20 семплов)
+- Отбрасывание скачков >30°C
+
+## 📝 Логирование
+
+Логи сохраняются в:
+```
+~/.local/share/clevo-fan-control/logs/clevo_fan_control_YYYYMMDD_HHMMSS.log
+```
+
+Формат строки лога:
+```
+[HH:MM:SS] CPU:XX | GPU:XX | GPU_EC:XX | AMB:XX | NVMe:XX/XX | FAN_CPU:XXXX/XX% | FAN_GPU:XXXX/XX% | причина
+```
+
+## 🛠️ Вспомогательные утилиты (для разработки)
+
+В директории `utilites/` находятся инструменты, использовавшиеся при разработке:
+
+### Диагностические утилиты
+
+| Файл | Назначение |
+|------|------------|
+| `ec_gpu_temp_scanner.cpp` | Сканирование EC регистров для поиска GPU температуры |
+| `thermal_scanner.cpp` | Сканирование тепловых датчиков системы |
+| `nvme_diag.cpp` | Диагностика NVMe дисков и поиск путей к температуре |
+| `gpu_fan_test_fixed.cpp` | Тестирование управления GPU вентилятором |
+
+### Документация
+
+| Файл | Содержание |
+|------|------------|
+| `DEVELOPMENT_NOTES.md` | Заметки по разработке и найденные EC регистры |
+| `EC_REGISTERS.txt` | Полная карта EC регистров для Clevo N960KPx |
+| `QUICK_REFERENCE.txt` | Краткая справка по EC командам |
+
+**Важно:** Эти утилиты не компилируются в основном проекте и предназначены только для отладки и исследования оборудования.
+
+## 📚 Известные EC регистры
+
+| Регистр | Назначение | Доступ |
+|---------|------------|--------|
+| 0x07 | CPU Temperature | RO |
+| 0xCA | Ambient Temperature | RO |
+| 0xFB | GPU Temperature (CORRECT!) | RO |
+| 0xCE | CPU Fan Duty | RW |
+| 0xCF | GPU Fan Duty | RW |
+| 0xD0/D1 | CPU Fan RPM | RO |
+| 0xD2/D3 | GPU Fan RPM | RO |
+
+### EC Команды
+
+| Команда | Порт | Назначение |
+|---------|------|------------|
+| 0x99 | 0x01 | Установка CPU вентилятора |
+| 0x99 | 0x02 | Установка GPU вентилятора |
+| 0x99 | 0xFF | Возврат в AUTO режим |
+
+### Формула RPM
+
+```
+RPM = 2156220 / ((high_byte << 8) + low_byte)
+```
+
+## 🐛 Диагностика
+
+### Проверка EC доступа
+
 ```bash
-lsmod | grep -E "tuxedo|clevo"
+sudo clevo-fan-control status
 ```
 
-При необходимости выгрузите их:
+### Диагностический тест вентиляторов
+
 ```bash
-sudo modprobe -r tuxedo_io clevo_acpi tuxedo_keyboard
+sudo clevo-fan-control test
 ```
 
-### GPU температура не отображается
+### Просмотр логов в реальном времени
 
-Установите драйверы NVIDIA:
 ```bash
-sudo apt install nvidia-driver-XXX  # для Debian/Ubuntu
+tail -f ~/.local/share/clevo-fan-control/logs/clevo_fan_control_*.log
 ```
 
-## Лицензия
+## 🔧 Устранение неполадок
 
-GPL v3
+### Конфликт с tuxedo_io/clevo_acpi
 
-## Авторы
+Если модули `tuxedo_io` или `clevo_acpi` загружены, программа все равно работает через прямой доступ к портам. Конфликт не влияет на функциональность.
 
-- **Guryev Pavel** (pilatnet@gmail.com) — автор и maintainer
-- **Agramian** — оригинальная работа (https://github.com/agramian/clevo-fan-control)
-- **DeepSeek AI** — помощь в разработке
+### NVMe диски не отображаются
 
-## Благодарности
+Программа автоматически ищет пути к NVMe температурам при запуске. Если диски не найдены, используйте утилиту `nvme_diag` для диагностики:
 
-- Команде Tuxedo Computers за драйверы для Clevo ноутбуков
-- Сообществу Linux за поддержку и тестирование
+```bash
+cd utilites
+g++ -o nvme_diag nvme_diag.cpp
+sudo ./nvme_diag
+```
 
-## Ссылки
+### Задержки USB аудио
 
-- [Исходный код](https://github.com/GuryevPavel/clevo-fan-control)
-- [Оригинальная работа Agramian](https://github.com/agramian/clevo-fan-control)
-- [Драйверы Tuxedo](https://github.com/tuxedocomputers/tuxedo-drivers)
+Оптимизированная версия не использует `popen()` в цикле, что исключает микро-задержки. Пути к NVMe файлам определяются один раз при старте.
+
+## 📁 Структура проекта
+
+```
+clevo-fan-control/
+├── src/
+│   └── main.cpp                 # Основной исходный код
+├── utilites/                    # Вспомогательные утилиты (для разработки)
+│   ├── ec_gpu_temp_scanner.cpp
+│   ├── thermal_scanner.cpp
+│   ├── nvme_diag.cpp
+│   ├── gpu_fan_test_fixed.cpp
+│   ├── DEVELOPMENT_NOTES.md
+│   ├── EC_REGISTERS.txt
+│   └── QUICK_REFERENCE.txt
+├── drivers/                     # Драйверы (опционально)
+│   ├── Install_tuxedo_drivers.md
+│   └── update-tuxedo-drivers.sh
+├── CMakeLists.txt               # Конфигурация сборки
+├── clevo-fan-control.service.in # systemd сервис
+├── install.sh                   # Скрипт быстрой установки
+└── README.md                    # Документация
+```
+
+## 🤝 Благодарности
+
+- **Agramian** - оригинальный проект [clevo-fan-control](https://github.com/agramian/clevo-fan-control)
+- **DeepSeek AI** - помощь в разработке и оптимизации
+- Сообщество Clevo Linux - тестирование и обратная связь
+
+## 📄 Лицензия
+
+GPL v3. Подробности в файле LICENSE.
+
+## 👤 Автор
+
+Guryev Pavel (pilatnet@gmail.com)
+
+---
+
+**Версия 1.0.2** - Финальный релиз с полной поддержкой NVMe и оптимизацией производительности.

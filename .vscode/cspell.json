@@ -5,6 +5,7 @@
         "автозапуском",
         "багрепортов",
         "логированием",
+        "пересборка",
         "KStatusNotifierItem",
         "QApplication",
         "QDebug",
