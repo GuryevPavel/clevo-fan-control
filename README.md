@@ -3,7 +3,7 @@
 Интеллектуальная система управления вентиляторами для ноутбуков Clevo (N960KPx / Hasee TX9-CA5DP)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.0.2-green.svg)](https://github.com/pilat/clevo-fan-control/releases)
+[![Version](https://img.shields.io/badge/version-1.0.2-green.svg)](https://github.com/GuryevPavel/clevo-fan-control.git)
 
 ## 🌟 Особенности
 
@@ -33,7 +33,7 @@ sudo ./install.sh
 ### Ручная установка из исходников
 
 ```bash
-git clone https://github.com/pilat/clevo-fan-control.git
+git clone https://github.com/GuryevPavel/clevo-fan-control.git
 cd clevo-fan-control
 mkdir build && cd build
 cmake ..
